@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oren's N24 Personal Time</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .clock-container {
+            background-color: #2d3748;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 1.5rem;
+        }
+        .clock-display {
+            font-size: 2.25rem;
+            font-weight: bold;
+            color: #63b3ed;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            background-color: #1a202c;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+        }
+        .time-label {
+            font-size: 0.875rem;
+            color: #a0aec0;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .input-group { margin-bottom: 1rem; }
+        .input-group label { display: block; margin-bottom: 0.5rem; font-size: 0.875rem; color: #cbd5e0; }
+        .input-group input, .modal-input {
+            width: 100%;
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            background-color: #4a5568;
+            border: 1px solid #718096;
+            color: #e2e8f0;
+        }
+        input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+        .button-group { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .button {
+            flex-grow: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        .button-primary { background-color: #4299e1; color: white; }
+        .button-primary:hover { background-color: #3182ce; }
+        .button-secondary { background-color: #4a5568; color: #e2e8f0; }
+        .button-secondary:hover { background-color: #2d3748; }
+        .message-box { margin-top: 1rem; padding: 0.75rem; border-radius: 0.375rem; font-size: 0.875rem; text-align: center; }
+        .message-success { background-color: #38a169; color: white; }
+        .message-error { background-color: #c53030; color: white; }
+        .message-info { background-color: #2b6cb0; color: white; }
+        #adminLoginBtn {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        #adminLoginBtn:hover { opacity: 1; }
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.75);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000; padding: 1rem;
+        }
+        .modal-content {
+            background-color: #2d3748; padding: 1.5rem; border-radius: 0.5rem;
+            width: 100%; max-width: 400px; color: #e2e8f0;
+        }
+        .modal-title { font-size: 1.25rem; font-weight: bold; margin-bottom: 1rem; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    </style>
+</head>
+<body>
+
+    <div class="clock-container">
+        <h1 class="text-2xl font-bold text-center mb-6 text-white">Oren's N24 Personal Time</h1>
+        <div>
+            <div id="israeliTimeDisplay" class="clock-display">--:--:--</div>
+            <p id="israeliDateDisplay" class="time-label">Loading current Israeli time...</p>
+        </div>
+        <div>
+            <div id="n24TimeDisplay" class="clock-display">--:--:--</div>
+            <p id="n24DayDisplay" class="time-label">Syncing reference time...</p>
+        </div>
+    </div>
+
+    <!-- Admin-only controls, hidden by default -->
+    <div id="adminControls" class="clock-container" style="display: none;">
+        <h2 class="text-xl font-semibold text-center mb-4 text-white">Admin: Set Reference Point</h2>
+        <div class="input-group">
+            <label for="refIsraeliDateTimeLocal">Reference Israeli Date & Time</label>
+            <input type="datetime-local" id="refIsraeliDateTimeLocal">
+            <p class="text-xs text-gray-500 mt-1">Note: This time is assumed to be in your device's local time zone (Israel).</p>
+        </div>
+        <div class="input-group">
+            <label for="refN24Time">Oren's N24 Time at that moment</label>
+            <input type="time" id="refN24Time" value="00:00:00" step="1">
+        </div>
+        <div class="button-group">
+            <button id="setReferenceBtn" class="button button-primary">Set & Publish Reference</button>
+            <button id="clearReferenceBtn" class="button button-secondary">Clear Public Reference</button>
+        </div>
+        <div id="messageArea" class="message-box" style="display: none;"></div>
+    </div>
+    
+    <!-- Admin Login Button -->
+    <div id="adminLoginBtn" title="Admin Login">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-4.44a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.38"/><path d="M18 14v-4h-4v4h4z"/><path d="M18 6V2"/><path d="M7 18v-4h4v4h-4z"/><path d="M7 6V2"/></svg>
+    </div>
+
+    <!-- Admin Password Modal -->
+    <div id="adminModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3 class="modal-title">Admin Access</h3>
+            <div class="input-group">
+                <label for="adminPassword">Enter Password</label>
+                <input type="password" id="adminPassword" class="modal-input">
+            </div>
+            <div class="button-group">
+                 <button id="cancelAdminLogin" class="button button-secondary">Cancel</button>
+                <button id="submitAdminLogin" class="button button-primary">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================================
+        // === STEP 1: PASTE YOUR FIREBASE CONFIGURATION OBJECT HERE ===============================
+        // =========================================================================================
+        const FIREBASE_CONFIG_FROM_YOUR_PROJECT = {
+  apiKey: "AIzaSyA4jaU7C0tp15cchXRL1pVM-Spdyi7e_2k",
+  authDomain: "oren-n24-clock.firebaseapp.com",
+  projectId: "oren-n24-clock",
+  storageBucket: "oren-n24-clock.firebasestorage.app",
+  messagingSenderId: "486532792721",
+  appId: "1:486532792721:web:16cd261b52a8ab0f9ada30"
+};
+        // =========================================================================================
+
+        // === STEP 2: CHOOSE A SECRET PASSWORD FOR ADMIN ACCESS ===================================
+        const ADMIN_PASSWORD = "thetimeisnow"; // <-- Change this to your own secret password
+        
+        // App Constants and DOM Elements
+        const CLOCK_APP_ID = "orens-n24-clock-v1"; // A unique name for your app's data
+        const N24_DAY_STANDARD_MS = (25 * 60 + 47) * 60 * 1000;
+        const STANDARD_CLOCK_CYCLE_MS = 24 * 60 * 60 * 1000;
+        const CONVERSION_FACTOR = STANDARD_CLOCK_CYCLE_MS / N24_DAY_STANDARD_MS; 
+
+        const israeliTimeDisplay = document.getElementById('israeliTimeDisplay');
+        const israeliDateDisplay = document.getElementById('israeliDateDisplay');
+        const n24TimeDisplay = document.getElementById('n24TimeDisplay');
+        const n24DayDisplay = document.getElementById('n24DayDisplay');
+        const refIsraeliDateTimeLocalInput = document.getElementById('refIsraeliDateTimeLocal');
+        const refN24TimeInput = document.getElementById('refN24Time');
+        const setReferenceBtn = document.getElementById('setReferenceBtn');
+        const clearReferenceBtn = document.getElementById('clearReferenceBtn');
+        const messageArea = document.getElementById('messageArea');
+        const adminControls = document.getElementById('adminControls');
+        const adminLoginBtn = document.getElementById('adminLoginBtn');
+        const adminModal = document.getElementById('adminModal');
+        const adminPasswordInput = document.getElementById('adminPassword');
+        const submitAdminLoginBtn = document.getElementById('submitAdminLogin');
+        const cancelAdminLoginBtn = document.getElementById('cancelAdminLogin');
+        
+        let clockInterval = null;
+        let db, auth;
+        let referenceListener = null;
+
+        // Utility Functions
+        function showMessage(text, type = 'info') {
+            messageArea.textContent = text;
+            messageArea.className = `message-box message-${type}`;
+            messageArea.style.display = 'block';
+            setTimeout(() => { if (messageArea.textContent === text) messageArea.style.display = 'none'; }, 5000);
+        }
+        function formatTwoDigits(num) { return String(num).padStart(2, '0'); }
+
+        // Clock Logic
+        function updateRealTimeClock() {
+            const now = new Date();
+            try {
+                const timeOpts = { timeZone: "Asia/Jerusalem", hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' };
+                const dateOpts = { timeZone: "Asia/Jerusalem", weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                israeliTimeDisplay.textContent = now.toLocaleTimeString('en-GB', timeOpts);
+                israeliDateDisplay.textContent = `Israel: ${now.toLocaleDateString('en-GB', dateOpts)}`;
+            } catch (error) { console.error("Error formatting Israeli time:", error); }
+        }
+
+        function startN24Clock(israeliReferenceEpochMs, n24ReferenceTimeAtRefPointMs) {
+            if (clockInterval) clearInterval(clockInterval);
+            const updateN24Clock = () => {
+                const currentStandardEpochMs = new Date().getTime();
+                const elapsedStandardMs = currentStandardEpochMs - israeliReferenceEpochMs;
+                const elapsedN24EquivalentMs = elapsedStandardMs * CONVERSION_FACTOR;
+                const currentN24TotalMs = n24ReferenceTimeAtRefPointMs + elapsedN24EquivalentMs;
+                const n24DayNumber = Math.floor(currentN24TotalMs / STANDARD_CLOCK_CYCLE_MS);
+                let n24MsInCurrentCycle = currentN24TotalMs % STANDARD_CLOCK_CYCLE_MS;
+                if (n24MsInCurrentCycle < 0) n24MsInCurrentCycle += STANDARD_CLOCK_CYCLE_MS;
+                const totalN24SecondsInCycle = Math.floor(n24MsInCurrentCycle / 1000);
+                const n24Hrs = formatTwoDigits(Math.floor(totalN24SecondsInCycle / 3600));
+                const n24Mins = formatTwoDigits(Math.floor((totalN24SecondsInCycle % 3600) / 60));
+                const n24Secs = formatTwoDigits(totalN24SecondsInCycle % 60);
+                n24TimeDisplay.textContent = `${n24Hrs}:${n24Mins}:${n24Secs}`;
+                n24DayDisplay.textContent = `Oren's Time (Day ${n24DayNumber})`;
+            };
+            updateN24Clock();
+            clockInterval = setInterval(updateN24Clock, 1000);
+        }
+        
+        function stopN24Clock() {
+            if (clockInterval) clearInterval(clockInterval);
+            n24TimeDisplay.textContent = "--:--:--";
+            n24DayDisplay.textContent = "Reference not set.";
+        }
+        
+        // Firebase & Data Logic
+        async function setupFirebase() {
+            if (!FIREBASE_CONFIG_FROM_YOUR_PROJECT || !FIREBASE_CONFIG_FROM_YOUR_PROJECT.apiKey) {
+                console.error("Firebase config is missing. Please paste it into the script.");
+                n24DayDisplay.textContent = "Error: Clock not configured.";
+                return;
+            }
+            const app = initializeApp(FIREBASE_CONFIG_FROM_YOUR_PROJECT);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            try {
+                await signInAnonymously(auth);
+                listenForReference();
+            } catch (error) {
+                console.error("Firebase sign-in failed:", error);
+                n24DayDisplay.textContent = "Error: Authentication failed.";
+            }
+        }
+
+        function listenForReference() {
+            if (referenceListener) referenceListener();
+            const refDoc = doc(db, "clocks", CLOCK_APP_ID);
+            referenceListener = onSnapshot(refDoc, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    startN24Clock(data.israeliReferenceEpochMs, data.n24ReferenceTimeAtRefPointMs);
+                    if (document.getElementById('adminControls').style.display === 'block') {
+                         refIsraeliDateTimeLocalInput.value = new Date(data.israeliReferenceEpochMs).toISOString().slice(0, 16);
+                         const n24totalSeconds = data.n24ReferenceTimeAtRefPointMs / 1000;
+                         const n24H = formatTwoDigits(Math.floor(n24totalSeconds/3600));
+                         const n24M = formatTwoDigits(Math.floor((n24totalSeconds % 3600) / 60));
+                         refN24TimeInput.value = `${n24H}:${n24M}`;
+                    }
+                } else {
+                    stopN24Clock();
+                }
+            }, (error) => {
+                console.error("Error listening to reference:", error);
+                n24DayDisplay.textContent = "Error: Could not sync time.";
+            });
+        }
+
+        // Admin Controls
+        adminLoginBtn.addEventListener('click', () => adminModal.style.display = 'flex');
+        cancelAdminLoginBtn.addEventListener('click', () => adminModal.style.display = 'none');
+        submitAdminLoginBtn.addEventListener('click', () => {
+            if (adminPasswordInput.value === ADMIN_PASSWORD) {
+                adminControls.style.display = 'block';
+                adminModal.style.display = 'none';
+                adminPasswordInput.value = '';
+            } else { alert("Incorrect password."); }
+        });
+
+        setReferenceBtn.addEventListener('click', async () => {
+            const refIsraeliStr = refIsraeliDateTimeLocalInput.value;
+            if (!refIsraeliStr) return showMessage("Please select a Reference Israeli Date & Time.", "error");
+            const parsedIsraeliRefDate = new Date(refIsraeliStr);
+            if (isNaN(parsedIsraeliRefDate.getTime())) return showMessage("Invalid Date & Time format.", "error");
+            const israeliMs = parsedIsraeliRefDate.getTime();
+            const refN24Str = refN24TimeInput.value;
+            const n24Parts = refN24Str.split(':');
+            if (n24Parts.length < 2) return showMessage("Invalid N24 Time format.", "error");
+            const n24H = parseInt(n24Parts[0],10), n24M = parseInt(n24Parts[1],10), n24S = n24Parts[2] ? parseInt(n24Parts[2],10) : 0;
+            if (isNaN(n24H)||isNaN(n24M)||isNaN(n24S)||n24H<0||n24H>23||n24M<0||n24M>59||n24S<0||n24S>59) return showMessage("Invalid N24 time values.", "error");
+            const n24Ms = (n24H * 3600 + n24M * 60 + n24S) * 1000;
+            try {
+                setReferenceBtn.disabled = true; setReferenceBtn.textContent = "Publishing...";
+                const refDoc = doc(db, "clocks", CLOCK_APP_ID);
+                await setDoc(refDoc, {
+                    israeliReferenceEpochMs: israeliMs,
+                    n24ReferenceTimeAtRefPointMs: n24Ms,
+                    lastUpdated: serverTimestamp()
+                });
+                showMessage("Public reference updated successfully!", "success");
+            } catch (error) {
+                console.error("Error setting reference:", error); showMessage("Failed to update public reference.", "error");
+            } finally { setReferenceBtn.disabled = false; setReferenceBtn.textContent = "Set & Publish Reference"; }
+        });
+        
+        clearReferenceBtn.addEventListener('click', async () => {
+             if (!confirm("Are you sure you want to clear the public reference time? This will stop the clock for all visitors.")) return;
+            try {
+                clearReferenceBtn.disabled = true; clearReferenceBtn.textContent = "Clearing...";
+                const refDoc = doc(db, "clocks", CLOCK_APP_ID);
+                await deleteDoc(refDoc);
+                showMessage("Public reference cleared.", "info");
+            } catch (error) {
+                console.error("Error clearing reference:", error); showMessage("Failed to clear public reference.", "error");
+            } finally { clearReferenceBtn.disabled = false; clearReferenceBtn.textContent = "Clear Public Reference"; }
+        });
+
+        // Initialization
+        updateRealTimeClock();
+        setInterval(updateRealTimeClock, 1000);
+        setupFirebase();
+    </script>
+</body>
+</html>
